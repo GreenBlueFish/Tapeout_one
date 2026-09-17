@@ -13,7 +13,7 @@ async def test_reset(dut):
     await ClockCycles(dut.clk, 2)
 
     dut.rst_n.value = 1
-    dut.ena.value = 1
+    dut.ui_in.value = 2
     await RisingEdge(dut.clk)
 
     assert dut.uo_out.value == 0, f"Expected uo_out=0 after reset, got {dut.uo_out.value}"
@@ -30,7 +30,7 @@ async def test_count_up(dut):
     await ClockCycles(dut.clk, 2)
 
     dut.rst_n.value = 1
-    dut.ena.value = 1
+    dut.ui_in.value = 2
 
     for expected in range(1, 6):
         await RisingEdge(dut.clk)
@@ -52,13 +52,13 @@ async def test_enable_low_output_z_value(dut):
     await ClockCycles(dut.clk, 2)
 
     dut.rst_n.value = 1
-    dut.ena.value = 1
+    dut.ui_in.value = 2
     await ClockCycles(dut.clk, 3)
     await FallingEdge(dut.clk)
 
     dut._log.info(f"uo_out {dut.uo_out.value}")
     dut._log.info(f"ena {dut.ena.value}")
-    dut.ena.value = 0
+    dut.ui_in.value = 2
 
     await ClockCycles(dut.clk, 3)
     await FallingEdge(dut.clk)
