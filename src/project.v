@@ -8,13 +8,13 @@
 module tt_um_counter (
     input  wire clk,
     input  wire rst_n,
-    input  wire ena,
-    output wire [7:0] uo_out,
-
-    //unused
-    input wire [7:0] ui_in,
     input wire [7:0] uio_in,
     output wire [7:0] uio_out,
+
+    //unused
+    input  wire ena,
+    input wire [7:0] ui_in,
+    output wire [7:0] uo_out,
     output wire [7:0] uio_oe
 );
   
@@ -35,10 +35,11 @@ module tt_um_counter (
     //        uo_out = 8'bzzzzzzzz;
     //    end
     //end
-    assign uo_out = ena ? counter : 8'bzzzzzzzz;
+    assign uio_out = uio_oe[1] ? counter : 8'bzzzzzzzz;
 
     //pointless code
-    assign uio_out = ui_in & uio_in;
+    assign uio_out = ui_in & {uio_in[7:2], uio_in};
     assign uio_oe  = ui_in & uio_in;
+    assign ena = 1'b1;
 
 endmodule
