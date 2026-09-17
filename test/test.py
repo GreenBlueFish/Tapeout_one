@@ -13,7 +13,7 @@ async def test_reset(dut):
     await ClockCycles(dut.clk, 2)
 
     dut.rst_n.value = 1
-    dut.enable.value = 1
+    dut.ena.value = 1
     await RisingEdge(dut.clk)
 
     assert dut.bus.value == 0, f"Expected bus=0 after reset, got {dut.bus.value}"
@@ -26,11 +26,11 @@ async def test_count_up(dut):
     cocotb.start_soon(clock.start())
 
     dut.rst_n.value = 0
-    dut.enable.value = 0
+    dut.ena.value = 0
     await ClockCycles(dut.clk, 2)
 
     dut.rst_n.value = 1
-    dut.enable.value = 1
+    dut.ena.value = 1
 
     for expected in range(1, 6):
         await RisingEdge(dut.clk)
@@ -48,18 +48,18 @@ async def test_enable_low_output_z_value(dut):
     cocotb.start_soon(clock.start())
 
     dut.rst_n.value = 0
-    dut.enable.value = 0
+    dut.ena.value = 0
     await ClockCycles(dut.clk, 2)
 
     dut.rst_n.value = 1
-    dut.enable.value = 1
+    dut.ena.value = 1
     await ClockCycles(dut.clk, 3)
     await FallingEdge(dut.clk)
 
     prior_value = dut.bus.value
     dut._log.info(f"prior value: {prior_value}")
 
-    dut.enable.value = 0
+    dut.ena.value = 0
 
     await ClockCycles(dut.clk, 3)
     await FallingEdge(dut.clk)
