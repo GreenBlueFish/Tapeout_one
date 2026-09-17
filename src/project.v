@@ -5,7 +5,7 @@
 
 `default_nettype none
 
-module tt_um_project (
+module tt_um_counter (
     input  wire clk,
     input  wire rst_n,
     input  wire ena,
