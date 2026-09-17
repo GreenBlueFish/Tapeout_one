@@ -10,12 +10,6 @@ module tt_um_counter (
     input  wire rst_n,
     input  wire ena,
     output wire [7:0] uo_out,
-
-    //unused
-    input reg [7:0] ui_in,
-    input reg [7:0] uio_in,
-    output wire [7:0] uio_out,
-    output wire [7:0] uio_oe
 );
     
     reg [7:0] counter;
@@ -29,11 +23,5 @@ module tt_um_counter (
     end
 
     assign uo_out = ena ? counter : 8'hz;
-
-    //pointless logic, I want to keep the unused wires
-    assign uio_out = 8'hz;
-    assign uio_oe[7:1]  = 7'hz;
-    wire _unused = &{ui_in, uio_in};
-    assign uio_oe[0] = _unused_ok;
 
 endmodule
