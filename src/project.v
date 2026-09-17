@@ -8,10 +8,10 @@
 module project (
     input  wire clk,
     input  wire rst_n,
-    input  wire enable,
-    input  wire [7:0] load,
-    output wire [7:0] bus
+    input  wire ena,
+    output wire [7:0] uo_out
 );
+
 
     reg [7:0] counter;
 
@@ -23,6 +23,6 @@ module project (
         end
     end
 
-    assign bus = enable ? counter : 8'hz;
+    assign uo_out = ena ? counter : 8'hz;
 
 endmodule
