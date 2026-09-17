@@ -12,10 +12,10 @@ module tt_um_counter (
     output wire [7:0] uo_out,
 
     //unused
-    wire [7:0] ui_in,
-    wire [7:0] uio_in,
-    wire [7:0] uio_out,
-    wire [7:0] uio_oe
+    input wire [7:0] ui_in,
+    input wire [7:0] uio_in,
+    output wire [7:0] uio_out,
+    output wire [7:0] uio_oe
 );
   
     reg [7:0] counter;
