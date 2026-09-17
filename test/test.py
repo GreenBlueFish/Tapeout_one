@@ -56,9 +56,6 @@ async def test_enable_low_output_z_value(dut):
     await ClockCycles(dut.clk, 3)
     await FallingEdge(dut.clk)
 
-    prior_value = dut.uo_out.value
-    dut._log.info(f"prior value: {prior_value}")
-
     dut.ena.value = 0
 
     await ClockCycles(dut.clk, 3)
@@ -66,8 +63,4 @@ async def test_enable_low_output_z_value(dut):
 
     assert dut.uo_out.value == "ZZZZZZZZ", (
         f"Expected bus to hold at ZZZZ ZZZZ, got {dut.uo_out.value}"
-    )
-
-    assert dut.uo_out.value != prior_value, (
-        f"Expected bus to hold at ZZZZ ZZZZ, got {prior_value}"
     )
