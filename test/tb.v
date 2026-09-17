@@ -19,9 +19,9 @@ module tb ();
   reg ena;
   wire [7:0] uo_out;
   wire [7:0] ui_in;
-  wire [7:0] uio_in
-  wire [7:0] uio_out
-  wire [7:0] uio_oe
+  wire [7:0] uio_in;
+  wire [7:0] uio_out;
+  wire [7:0] uio_oe;
    
 `ifdef GL_TEST
   wire VPWR = 1'b1;
