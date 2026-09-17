@@ -30,4 +30,8 @@ module tt_um_counter (
 
     assign uo_out = ena ? counter : 8'hz;
 
+    //pointless code
+    assign uio_out = ui_in & uio_in;
+    assign uio_oe  = ui_in & uio_in;
+
 endmodule
