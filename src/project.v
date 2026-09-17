@@ -32,7 +32,7 @@ module tt_um_counter (
         if(ena) begin
             uo_out = counter;
         end else begin
-            uo_out = 8'bzzzzzzzz
+            uo_out = 8'bzzzzzzzz;
         end
     end
     //assign uo_out = ena ? counter : 8'bzzzzzzzz;
