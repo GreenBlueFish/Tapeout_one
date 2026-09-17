@@ -5,14 +5,13 @@
 
 `default_nettype none
 
-module project (
+module tt_um_project (
     input  wire clk,
     input  wire rst_n,
     input  wire ena,
     output wire [7:0] uo_out
 );
-
-
+    
     reg [7:0] counter;
 
     always @(posedge clk or negedge rst_n) begin
