@@ -9,13 +9,13 @@ module tt_um_counter (
     input  wire clk,
     input  wire rst_n,
     input  wire ena,
-    output wire [7:0] uio_oe
+    output wire [7:0] uio_oe,
     output wire [7:0] uio_out,
 
     //unused
     input wire [7:0] uio_in,
     input wire [7:0] ui_in,
-    output wire [7:0] uo_out,
+    output wire [7:0] uo_out
 );
 
     assign uio_oe = 8'b00000000;
