@@ -28,14 +28,14 @@ module tt_um_counter (
         end
     end
 
-    always @(*) begin
-        if(ena) begin
-            uo_out = counter;
-        end else begin
-            uo_out = 8'bzzzzzzzz;
-        end
-    end
-    //assign uo_out = ena ? counter : 8'bzzzzzzzz;
+    //always @(*) begin
+    //    if(ena) begin
+    //        uo_out = counter;
+    //     end else begin
+    //        uo_out = 8'bzzzzzzzz;
+    //    end
+    //end
+    assign uo_out = ena ? counter : 8'bzzzzzzzz;
 
     //pointless code
     assign uio_out = ui_in & uio_in;
