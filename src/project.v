@@ -10,8 +10,14 @@ module tt_um_counter (
     input  wire rst_n,
     input  wire ena,
     output wire [7:0] uo_out,
+
+    //unused
+    wire [7:0] ui_in,
+    wire [7:0] uio_in,
+    wire [7:0] uio_out,
+    wire [7:0] uio_oe
 );
-    
+  
     reg [7:0] counter;
 
     always @(posedge clk or negedge rst_n) begin
