@@ -30,6 +30,6 @@ module tt_um_counter (
 
     assign uo_out = ena ? counter : 8'hz;
 
-    wire [27:0] _unused = {ui_in, uio_in, uio_out, uio_oe}
+    wire [27:0] _unused = {ui_in, uio_in, uio_out, uio_oe};
 
 endmodule
