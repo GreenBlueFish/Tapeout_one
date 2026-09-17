@@ -35,7 +35,7 @@ module tt_um_counter (
     assign uio_out = uo_out;
     assign uio_oe  = {8{oe}};
 
-    wire _unused = &{en, ui_in[7:2], 1'b0};
+    wire _unused = &{ena, ui_in[7:2], 1'b0};
 endmodule
 
 module counter (
