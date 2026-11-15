@@ -1,47 +1,94 @@
-# Sample testbench for a Tiny Tapeout project
+# Tests
 
-This is a sample testbench for a Tiny Tapeout project. It uses [cocotb](https://docs.cocotb.org/en/stable/) to drive the DUT and check the outputs.
-See below to get started or for more information, check the [website](https://tinytapeout.com/hdl/testing/).
+This directory contains a [cocotb](https://docs.cocotb.org/) testbench that
+verifies the VGA timing and the Game-of-Life control interface of
+`tt_um_vga_interface`.
 
-## Setting up
+## What is tested
 
-1. Edit [Makefile](Makefile) and modify `PROJECT_SOURCES` to point to your Verilog files.
-2. Edit [tb.v](tb.v) and replace `tt_um_example` with your module name.
+VGA timing (always running, independent of the simulation):
 
-## How to run
+- `test_reset` - leaves reset with resolvable (non-X) outputs, a cleared grid,
+  and the unused bidirectional pins tied off as inputs.
+- `test_hsync_period` - one horizontal line is exactly 800 pixel clocks.
+- `test_vsync_period` - one full frame is exactly 525 x 800 clocks.
 
-To run the RTL simulation:
+Control interface (serial load + step/speed):
 
-```sh
+- `test_serial_load` - a 16-bit pattern shifted in through `load_en`/`load_data`
+  lands in the grid correctly (snake order).
+- `test_load_holds_without_step` - the grid does not advance across vblanks
+  while no step occurs.
+- `test_step_one_generation` - `speed=0`: one `step` rising edge advances
+  exactly one generation; a blinker flips orientation (checked against a
+  Python Conway reference).
+- `test_speed_multiple_generations` - `speed=1` computes 2 generations per
+  step, `speed=2` computes 4.
+- `test_display_reflects_grid` - a loaded live cell is drawn (non-black) on the
+  screen, and the grid is unchanged while displaying.
+
+## Runtime
+
+Generations are committed during vertical blanking, so each `step`/`speed`
+test simulates several full 640x480 frames (420,000 clocks per frame). The
+full suite takes a few minutes under Icarus Verilog - this is expected, not a
+hang.
+
+## Running (Linux / macOS)
+
+```shell
+pip install -r requirements.txt
 make -B
 ```
 
-To run gatelevel simulation, first harden your project and copy `../runs/wokwi/results/final/verilog/gl/{your_module_name}.v` to `gate_level_netlist.v`.
+To view waveforms afterwards:
 
-Then run:
+```shell
+gtkwave tb.vcd
+```
 
-```sh
+## Running on Windows
+
+cocotb's Makefile needs Unix shell tools (`make`, `tr`, `sh`) and **cannot
+handle spaces in the project path** - and this project lives under a path with
+a space (`UW 2B`). So **`make` will not work when run directly** from this
+folder in PowerShell; you will get either `make: command not found` or
+`No targets specified`.
+
+Use the launcher at the project root instead. It copies the sources to a
+space-free staging dir, sets up the MSYS2 + Icarus Verilog + Python toolchain,
+and runs the flow for you:
+
+```powershell
+# from the project root (one level up from test/)
+powershell -ExecutionPolicy Bypass -File run_gui.ps1            # interactive GUI
+powershell -ExecutionPolicy Bypass -File run_gui.ps1 -Module test   # the test suite
+powershell -ExecutionPolicy Bypass -File run_gui.ps1 -SelfTest 3    # GUI smoke test
+```
+
+If the tool paths differ on your machine, edit the variables at the top of
+`run_gui.ps1` (`$Bash`, `$IverilogWin`, `$PyWin`, `$PyScripts`). The launcher
+uses the Python that has cocotb installed (not necessarily your active venv).
+
+Requirements on Windows: [MSYS2](https://www.msys2.org/) (for `make` and Unix
+tools), [Icarus Verilog](https://bleyer.org/icarus/), and a Tk-capable Python
+with cocotb installed (`pip install -r requirements.txt`).
+
+## Quick timing check without cocotb
+
+`tb_selfcheck.v` verifies the VGA timing with Icarus Verilog alone:
+
+```shell
+iverilog -g2012 -o tb_selfcheck.vvp -s tb_selfcheck \
+    tb_selfcheck.v ../src/project.v ../src/vga_timing.v ../src/golchip.v
+vvp tb_selfcheck.vvp
+```
+
+## Gate-level simulation
+
+After the GDS GitHub Action has produced `gate_level_netlist.v`, copy it here
+and run:
+
+```shell
 make -B GATES=yes
-```
-
-If you wish to save the waveform in VCD format instead of FST format, edit tb.v to use `$dumpfile("tb.vcd");` and then run:
-
-```sh
-make -B FST=
-```
-
-This will generate `tb.vcd` instead of `tb.fst`.
-
-## How to view the waveform file
-
-Using GTKWave
-
-```sh
-gtkwave tb.fst tb.gtkw
-```
-
-Using Surfer
-
-```sh
-surfer tb.fst
 ```
