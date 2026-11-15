@@ -88,7 +88,7 @@ module vga_timing (
         if (reset)
             vpos <= 10'd0;
         else if (hpos >= H_MAX) begin
-            if (v_pos >= V_MAX)
+            if (vpos >= V_MAX)
                 vpos <= 10'd0;
             else
                 vpos <= vpos + 10'd1;
