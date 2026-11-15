@@ -47,33 +47,6 @@ To view waveforms afterwards:
 gtkwave tb.vcd
 ```
 
-## Running on Windows
-
-cocotb's Makefile needs Unix shell tools (`make`, `tr`, `sh`) and **cannot
-handle spaces in the project path** - and this project lives under a path with
-a space (`UW 2B`). So **`make` will not work when run directly** from this
-folder in PowerShell; you will get either `make: command not found` or
-`No targets specified`.
-
-Use the launcher at the project root instead. It copies the sources to a
-space-free staging dir, sets up the MSYS2 + Icarus Verilog + Python toolchain,
-and runs the flow for you:
-
-```powershell
-# from the project root (one level up from test/)
-powershell -ExecutionPolicy Bypass -File run_gui.ps1            # interactive GUI
-powershell -ExecutionPolicy Bypass -File run_gui.ps1 -Module test   # the test suite
-powershell -ExecutionPolicy Bypass -File run_gui.ps1 -SelfTest 3    # GUI smoke test
-```
-
-If the tool paths differ on your machine, edit the variables at the top of
-`run_gui.ps1` (`$Bash`, `$IverilogWin`, `$PyWin`, `$PyScripts`). The launcher
-uses the Python that has cocotb installed (not necessarily your active venv).
-
-Requirements on Windows: [MSYS2](https://www.msys2.org/) (for `make` and Unix
-tools), [Icarus Verilog](https://bleyer.org/icarus/), and a Tk-capable Python
-with cocotb installed (`pip install -r requirements.txt`).
-
 ## Quick timing check without cocotb
 
 `tb_selfcheck.v` verifies the VGA timing with Icarus Verilog alone:
