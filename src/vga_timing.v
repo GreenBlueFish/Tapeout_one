@@ -73,12 +73,11 @@ module vga_timing (
     localparam V_SYNC_END   = V_DISPLAY + V_FRONT + V_SYNC - 1;        // 491
     localparam V_MAX        = V_DISPLAY + V_FRONT + V_SYNC + V_BACK - 1; // 524
 
-    wire hmaxed = (hpos == H_MAX) || reset;
-    wire vmaxed = (vpos == V_MAX) || reset;
-
     // Horizontal counter: advances every pixel clock.
     always @(posedge clk) begin
-        if (hmaxed)
+        if (reset)
+            hpos <= 10'd0;
+        else if (hpos >= H_MAX)
             hpos <= 10'd0;
         else
             hpos <= hpos + 10'd1;
@@ -86,8 +85,10 @@ module vga_timing (
 
     // Vertical counter: advances once per completed scanline.
     always @(posedge clk) begin
-        if (hmaxed) begin
-            if (vmaxed)
+        if (reset)
+            vpos <= 10'd0;
+        else if (hpos >= H_MAX) begin
+            if (v_pos >= V_MAX)
                 vpos <= 10'd0;
             else
                 vpos <= vpos + 10'd1;
