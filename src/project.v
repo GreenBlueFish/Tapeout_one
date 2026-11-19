@@ -151,10 +151,12 @@ module tt_um_vga_interface (
     // Register the pin outputs one stage (recommended for the readmux /
     // clean VGA edges). hsync/vsync are delayed one clock to stay aligned
     // with the registered colour.
+    // Reset value keeps hsync (bit 7) and vsync (bit 3) at their idle level
+    // (1, since both are active low) with all colour bits black.
     reg [7:0] uo_reg;
     always @(posedge clk) begin
         if (reset)
-            uo_reg <= 8'b0;
+            uo_reg <= 8'b1000_1000;
         else
             uo_reg <= {hsync, b[0], g[0], r[0],
                        vsync, b[1], g[1], r[1]};

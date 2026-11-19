@@ -834,3 +834,90 @@ async def test_ports_only_step(dut):
         g = pat_after(g, 2 ** speed)
         seen = await cells_from_pixels(dut)
         assert seen == g, f"speed={speed}: display {seen:#09x}, expected {g:#09x}"
+
+
+# ===========================================================================
+# Regression tests for sequencer / reset fixes
+# ===========================================================================
+
+@cocotb.test(skip=GL)
+async def test_load_cancels_running_burst(dut):
+    """Loading a new grid while a burst is still running cancels the rest of
+    the burst: the new grid must not advance until the next step."""
+    start_clock(dut)
+    await reset_dut(dut)
+    await serial_load(dut, 0x00000c4)
+
+    mon = CommitMonitor(dut)
+    dut.ui_in.value = ui(step=0, speed=3)
+    await ClockCycles(dut.clk, 5)
+    dut.ui_in.value = ui(step=1, speed=3)          # 8-generation burst
+    await wait_until(dut, lambda: mon.count >= 2, 4 * FRAME,
+                     "burst did not reach its 2nd generation")
+    dut.ui_in.value = ui()
+    mon.stop()
+
+    pat = 0x0003800                                 # blinker: changes if stepped
+    await serial_load(dut, pat)
+    mon = CommitMonitor(dut)
+    for _ in range(10 * FRAME):
+        await RisingEdge(dut.clk)
+    mon.stop()
+    assert mon.count == 0, f"{mon.count} leftover burst generations ran on the new grid"
+    assert int(dut.user_project.u_core.busy.value) == 0, "still busy after load"
+    assert cells(dut) == pat, f"new grid changed: {cells(dut):#09x} != {pat:#09x}"
+
+    # A fresh step still works normally afterwards.
+    await do_step(dut, speed=0)
+    assert cells(dut) == conway_next(pat)
+
+
+@cocotb.test(skip=GL)
+async def test_step_held_through_reset(dut):
+    """Holding step high across reset must not count as a rising edge."""
+    start_clock(dut)
+    await reset_dut(dut)
+
+    dut.ui_in.value = ui(step=1)                     # step high before and through reset
+    await ClockCycles(dut.clk, 5)
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 10)
+    dut.rst_n.value = 1                              # step still held high
+
+    mon = CommitMonitor(dut)
+    saw_busy = False
+    for _ in range(3 * FRAME):
+        await RisingEdge(dut.clk)
+        if int(dut.user_project.u_core.busy.value):
+            saw_busy = True
+    mon.stop()
+    assert not saw_busy, "core went busy from a step level held through reset"
+    assert mon.count == 0, f"{mon.count} generation(s) ran with no step edge"
+
+    # Releasing and re-pressing step is a real edge and still works.
+    dut.ui_in.value = ui()
+    await ClockCycles(dut.clk, 5)
+    mon = CommitMonitor(dut)
+    dut.ui_in.value = ui(step=1)
+    await ClockCycles(dut.clk, 2 * FRAME)
+    mon.stop()
+    assert mon.count == 1, f"step after reset ran {mon.count} generations, expected 1"
+
+
+@cocotb.test()
+async def test_sync_idle_during_reset(dut):
+    """While reset is held, hsync/vsync sit at their idle (high) level and
+    the colour pins are black. Port-only, so it also runs at gate level."""
+    start_clock(dut)
+    dut.ena.value = 1
+    dut.ui_in.value = ui()
+    dut.uio_in.value = 0
+    dut.rst_n.value = 0
+    await ClockCycles(dut.clk, 5)
+    for _ in range(20):
+        await RisingEdge(dut.clk)
+        assert hsync(dut) == 1, "hsync asserted (low) during reset"
+        assert vsync(dut) == 1, "vsync asserted (low) during reset"
+        assert colour(dut) == 0, f"colour {colour(dut):#04x} during reset"
+    dut.rst_n.value = 1
+    await RisingEdge(dut.clk)

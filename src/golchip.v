@@ -110,6 +110,11 @@ endmodule
 //     sees a half-updated grid. A burst therefore spans 2^speed frames.
 //   * `speed` sets how many generations one step computes:
 //       speed 0 -> 1, speed 1 -> 2, speed 2 -> 4, speed 3 -> 8.
+//   * Raising `load_en` cancels any burst still in progress (and any
+//     generation mid-routine), so a freshly loaded grid never advances
+//     until the next step.
+//   * The step edge detector resets as if `step` were already high, so
+//     holding step high through reset does not count as a rising edge.
 module golchip_sequencer (
     input  wire       clk,
     input  wire       rst_n,
@@ -152,23 +157,29 @@ module golchip_sequencer (
     always @(posedge clk) begin
         if (!rst_n || clear) begin
             phase     <= 4'd0;
-            step_sync <= 2'b00;
-            step_prev <= 1'b0;
+            step_sync <= 2'b11;   // treat step as already high: a level held
+            step_prev <= 1'b1;    // through reset is not a rising edge
             gens_left <= 4'd0;
         end else begin
             step_sync <= {step_sync[0], step};
             step_prev <= step_sync[1]; // edge detect / metastability guard
 
-            // A step edge (re)loads the burst counter. Loading holds us idle,
-            // so a step during load is ignored. A step while a burst is still
-            // running simply reloads the remaining count to a fresh burst.
-            if (step_rise && !load_en)
+            // A step edge (re)loads the burst counter. Loading cancels any
+            // remaining burst, and a step during load is ignored. A step while
+            // a burst is still running simply reloads the remaining count to a
+            // fresh burst.
+            if (load_en)
+                gens_left <= 4'd0;
+            else if (step_rise)
                 gens_left <= burst_len;
             else if (commit && gens_left != 4'd0)
                 gens_left <= gens_left - 4'd1;
 
             // Phase machine: 0 idle, 1..12 one generation routine.
-            if (start)
+            // Loading aborts a generation that is part-way through.
+            if (load_en)
+                phase <= 4'd0;
+            else if (start)
                 phase <= 4'd1;
             else if (phase == LAST)
                 phase <= 4'd0;
