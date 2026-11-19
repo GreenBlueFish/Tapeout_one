@@ -30,9 +30,8 @@
  *
  * Writing the grid (serial load):
  *   Hold load_en high and present bits on load_data. Each clock the bit is
- *   shifted one position along the 30-cell snake chain (row 0 left->right,
- *   row 1 right->left, ...). After 30 clocks the whole grid (6 rows x 5
- *   columns) is loaded;
+ *   shifted one position along the 25-cell snake chain (row 0 left->right,
+ *   row 1 right->left, ...). After 25 clocks the whole 5x5 grid is loaded;
  *   the last bit shifted in lands in cell 0.
  *
  * Advancing the simulation:
@@ -87,22 +86,22 @@ module tt_um_vga_interface (
 
     // Visible frame size and derived cell size. These MUST match the timing
     // in vga_timing.v (full 640x480, or the shrunk SIM_FAST_FRAME values used
-    // only in simulation). Each of the 6x5 (rows x cols) cells is CELL_W x CELL_H pixels.
+    // only in simulation). Each of the 5x5 cells is CELL_W x CELL_H pixels.
 `ifdef SIM_FAST_FRAME
     localparam HDISP = 40;
-    localparam VDISP = 24;
+    localparam VDISP = 20;
     localparam SEPW  = 1;    // separator width (px)
 `else
     localparam HDISP = 640;
     localparam VDISP = 480;
     localparam SEPW  = 4;
 `endif
-    localparam CELL_W = HDISP / 5;   // 5 columns: 128 real / 8 fast
-    localparam CELL_H = VDISP / 6;   // 6 rows:    80  real / 4 fast
+    localparam CELL_W = HDISP / 5;   // 128 real / 8 fast
+    localparam CELL_H = VDISP / 5;   // 96  real / 4 fast
 
     // Which cell the beam is inside: col = hpos / CELL_W, row = vpos / CELL_H.
     // Divisor is a constant, so this synthesises to fixed logic.
-    // 3 bits: col 0..4 / row 0..5 in the visible area, up to 6 during blanking.
+    // 3 bits: 0..4 in the visible area, up to 6 during blanking.
     wire [2:0] col = hpos / CELL_W;
     wire [2:0] row = vpos / CELL_H;
 
@@ -110,7 +109,7 @@ module tt_um_vga_interface (
     wire               cell_bit;
     wire               gen_tick;
     wire               busy;
-    wire [29:0]        cells;
+    wire [24:0]        cells;
 
     golchip_core u_core (
         .clk          (clk),
@@ -168,7 +167,7 @@ module tt_um_vga_interface (
     assign uio_oe  = 8'b0;
 
     // Tie off unused signals to silence lint warnings.
-    wire _unused = &{ena, uio_in, ui_in[3:2], gen_tick, busy, cells[29:1], 1'b0};
+    wire _unused = &{ena, uio_in, ui_in[3:2], gen_tick, busy, cells[24:1], 1'b0};
 
 endmodule
 

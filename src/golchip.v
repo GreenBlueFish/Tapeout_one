@@ -4,7 +4,7 @@
 //
 //    1. golchip_core       wires everything together (hand-off to the VGA side)
 //    2. golchip_sequencer  decides WHEN things happen (12-cycle routine)
-//    3. golchip_grid       5 wide x 6 tall cells, side-neighbour wiring, load chain
+//    3. golchip_grid       5 x 5 cells, side-neighbour wiring, load chain
 //    4. golchip_cell       one cell: shift register + Game of Life rule
 //    5. golchip_readmux     picks the cell the monitor is drawing
 //
@@ -32,7 +32,7 @@ module golchip_core (
 
     // from the VGA side
     input  wire           vblank_start,
-    input  wire [2:0]     row,          // 0..5 inside the grid
+    input  wire [2:0]     row,          // 0..4 inside the grid
     input  wire [2:0]     col,          // 0..4 inside the grid
 
     // to the VGA side / debug pins
@@ -41,7 +41,7 @@ module golchip_core (
     output wire           busy,
 
     // whole grid, for tests and debugging
-    output wire [29:0]    cells
+    output wire [24:0]    cells
 );
 
     wire [2:0] ld;
@@ -191,7 +191,7 @@ endmodule
 
 
 // ===========================================================================
-// 3. golchip_grid : 6 rows x 5 columns of cells
+// 3. golchip_grid : 5 x 5 array of cells
 //
 //   cells[r*5 + c] is the state of the cell at row r, column c.
 //   Row 0 is the top of the screen, column 0 the left.
@@ -223,24 +223,24 @@ module golchip_grid (
     input  wire           commit,
     input  wire           load_en,
     input  wire           load_data,
-    output wire [29:0]    cells,
+    output wire [24:0]    cells,
     output wire           chain_out   // last cell of the chain (handy for tests)
 );
 
-    // 6 rows x 5 columns of cells, padded to 8 rows x 7 columns with the dead ring.
-    wire [29:0] links;               // each cell's one output wire
-    wire [55:0] pad;                 // links with a dead ring around them
-    wire [30:0] chain;
+    // 5x5 cells, padded to 7x7 with the dead ring.
+    wire [24:0] links;               // each cell's one output wire
+    wire [48:0] pad;                 // links with a dead ring around them
+    wire [25:0] chain;
 
     assign chain[0]  = load_data;
-    assign chain_out = chain[30];
+    assign chain_out = chain[25];
 
     genvar r, c;
     generate
         // ---- padded copy of the link wires -------------------------------
-        for (r = 0; r < 8; r = r + 1) begin : g_pr
+        for (r = 0; r < 7; r = r + 1) begin : g_pr
             for (c = 0; c < 7; c = c + 1) begin : g_pc
-                if (r == 0 || c == 0 || r == 7 || c == 6) begin : g_border
+                if (r == 0 || c == 0 || r == 6 || c == 6) begin : g_border
                     assign pad[r*7 + c] = 1'b0;
                 end else begin : g_inner
                     assign pad[r*7 + c] = links[(r-1)*5 + (c-1)];
@@ -249,7 +249,7 @@ module golchip_grid (
         end
 
         // ---- the cells ---------------------------------------------------
-        for (r = 0; r < 6; r = r + 1) begin : g_row
+        for (r = 0; r < 5; r = r + 1) begin : g_row
             for (c = 0; c < 5; c = c + 1) begin : g_col
                 localparam integer IDX = r*5 + c;
                 localparam integer POS = r*5 + ((r % 2 == 0) ? c : (4-c));
@@ -383,19 +383,18 @@ endmodule
 // 5. golchip_readmux : pick the one cell the monitor is drawing
 //
 //   row / col come from the VGA counters (already offset and sliced).
-//   During blanking they can go past the grid (up to 6), so anything outside
-//   the 6-row x 5-column grid reads as dead instead of indexing off the end
-//   of `cells`.
+//   During blanking they can go past 4 (up to 6), so anything outside the
+//   5x5 grid reads as dead instead of indexing off the end of `cells`.
 //   Purely combinational; register the result before it drives the pins.
 // ===========================================================================
 module golchip_readmux (
-    input  wire [29:0] cells,
+    input  wire [24:0] cells,
     input  wire [2:0]  row,
     input  wire [2:0]  col,
     output wire        cell_bit
 );
 
-    wire in_grid = (row < 3'd6) && (col < 3'd5);
+    wire in_grid = (row < 3'd5) && (col < 3'd5);
     wire [5:0] idx = row*3'd5 + col;   // up to 6*5+6 = 36 fits in 6 bits
 
     assign cell_bit = in_grid & cells[idx];

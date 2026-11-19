@@ -1,6 +1,6 @@
 # Tiny Tapeout VGA Game of Life
 
-A **5×6 Conway's Game of Life** (5 columns wide, 6 rows tall) that runs on-chip and displays on a
+A **5×5 Conway's Game of Life** that runs on-chip and displays on a
 **640x480 @ 60 Hz** VGA monitor through the standard
 [TinyVGA Pmod](https://tinytapeout.com/specs/pinouts/). You write the starting
 grid in **serially** through the input pins, then advance the simulation with
@@ -40,7 +40,7 @@ the [UW-ASIC/Dino](https://github.com/UW-ASIC/Dino) reference project.
 | Module | Role |
 |--------|------|
 | `vga_timing`          | H/V counters. Produces `hsync`, `vsync`, `display_on`, a one-cycle `vblank_start` pulse, and the beam position (`hpos`, `vpos`). |
-| `golchip_core`        | Game of Life engine (in `golchip.v`): a sequencer, a 5×6 grid of cells (5 columns, 6 rows), a serial load chain, and a read mux that returns the one cell the beam is drawing. |
+| `golchip_core`        | Game of Life engine (in `golchip.v`): a sequencer, a 5×5 grid of cells, a serial load chain, and a read mux that returns the one cell the beam is drawing. |
 | `tt_um_vga_interface` | Top module. Derives `row`/`col` from the beam position, turns the selected cell into colour, and maps colour + sync onto the TinyVGA Pmod pins. |
 
 ---
@@ -75,7 +75,7 @@ clock of vertical blanking that the Game of Life core uses to time its updates.
 
 ## How the Game of Life core works
 
-The core (`golchip.v`) holds a 5-wide × 6-tall = 30-cell grid. Each cell is a small
+The core (`golchip.v`) holds a 5×5 = 25-cell grid. Each cell is a small
 compaction shift register that counts its live neighbours and applies the
 Conway rule (survive on 2–3 neighbours, born on exactly 3), with a dead border
 around the grid. A sequencer runs one generation as a 12-cycle routine.
@@ -106,21 +106,21 @@ mode; the simulation is fully under your control via the `step` pin.
 
 The grid is written **serially** — there is no address bus. Hold `load_en`
 high and present bits on `load_data`; each clock the bit shifts one position
-along a 30-cell **snake** (boustrophedon) chain that threads the grid row by
+along a 25-cell **snake** (boustrophedon) chain that threads the grid row by
 row, alternating direction (row 0 left→right, row 1 right→left, and so on).
 
-Shift 30 bits (one per clock) to fill the whole grid; the **last** bit shifted
+Shift 25 bits (one per clock) to fill the whole grid; the **last** bit shifted
 in lands in cell 0 (top-left), and earlier bits occupy later chain positions.
 Reset (`rst_n`) clears the grid to all-dead.
 
 The exact stream-slot → cell mapping (verified in `test/test.py`, `SNAKE`) is:
 
 ```
- slot:  0   1   2   3   4   5   6   7   8   9  10  11  12  13  14
- cell: 25  26  27  28  29  24  23  22  21  20  15  16  17  18  19
+ slot:  0   1   2   3   4   5   6   7   8   9  10  11  12
+ cell: 24  23  22  21  20  15  16  17  18  19  14  13  12
 
- slot: 15  16  17  18  19  20  21  22  23  24  25  26  27  28  29
- cell: 14  13  12  11  10   5   6   7   8   9   4   3   2   1   0
+ slot: 13  14  15  16  17  18  19  20  21  22  23  24
+ cell: 11  10   5   6   7   8   9   4   3   2   1   0
 ```
 
 where cell index = row*5 + col (row 0 top, col 0 left). The test and docs use
@@ -163,7 +163,7 @@ vblank-synced, the displayed image is always a complete, stable generation.
 | [7] | HSync | active low |
 
 Each channel is 2 bits, so the palette is 64 colours. The grid fills the
-screen (each cell 128×80 px): live cells white, dead cells near-black, with
+screen (each cell 128×96 px): live cells white, dead cells near-black, with
 thin grey separators. The output register adds a one-cycle pipeline stage for
 clean VGA edges (sync and colour are delayed together, so the picture stays
 aligned). The bidirectional pins (`uio_*`) are unused (`uio_oe = 0`).
