@@ -5,7 +5,7 @@ information below and delete any unused sections.
 
 ## How it works
 
-This project runs a **4×4 Conway's Game of Life** on-chip and displays it on a
+This project runs a **5×5 Conway's Game of Life** on-chip and displays it on a
 **640x480 @ 60 Hz** VGA monitor via the
 [TinyVGA Pmod](https://tinytapeout.com/specs/pinouts/). You write the starting
 grid in **serially** (one bit per clock), then advance the simulation with a
@@ -16,7 +16,7 @@ It is built from three source files:
 | Module | Role |
 |--------|------|
 | `vga_timing`          | Free-running H/V counters. Produces `hsync`, `vsync`, `display_on`, a one-cycle `vblank_start` pulse, and the beam position (`hpos`, `vpos`). |
-| `golchip.v` (core)    | The Game of Life engine: a sequencer, a 4×4 grid of cells (each a compaction shift register implementing the Life rule), a serial load chain, and a read mux that returns the one cell the beam is drawing. |
+| `golchip.v` (core)    | The Game of Life engine: a sequencer, a 5×5 grid of cells (each a compaction shift register implementing the Life rule), a serial load chain, and a read mux that returns the one cell the beam is drawing. |
 | `tt_um_vga_interface` | Top module. Wires the two together, derives `row`/`col` from the beam position, turns the selected cell into colour, and maps the result onto the TinyVGA Pmod pins. |
 
 The clock must run at the VGA pixel clock of **25.175 MHz**. Sync pulses are
@@ -40,15 +40,15 @@ the current, stable state.
 | [1:0] | speed     | generations computed per step: 2^speed (1, 2, 4, 8) |
 
 **Writing the grid (serial load).** Hold `load_en` high and present bits on
-`load_data`. Each clock the bit shifts one position along the 16-cell snake
-chain (row 0 left→right, row 1 right→left, …). After 16 clocks the whole 4×4
+`load_data`. Each clock the bit shifts one position along the 25-cell snake
+chain (row 0 left→right, row 1 right→left, …). After 25 clocks the whole 5×5
 grid is loaded; the last bit shifted in lands in cell 0.
 
 **Advancing.** A rising edge on `step` computes 2^speed generations, each
 committed during vertical blanking (so a burst spans 2^speed frames). The grid
 only changes in response to a step — it never free-runs.
 
-The 4×4 grid fills the screen (each cell 160×120 px): live cells white, dead
+The 5×5 grid fills the screen (each cell 128×96 px): live cells white, dead
 cells near-black, with thin grey separators. Reset (`rst_n`) clears the grid.
 
 ### Timing (640x480 @ 60 Hz)
@@ -67,7 +67,7 @@ Frame rate = 25.175 MHz / (800 x 525) ≈ 59.94 Hz.
    VGA monitor to the Pmod.
 3. Reset (`rst_n` low then high) to clear the grid (all dead).
 4. **Load a pattern.** Set `speed` as desired. Hold `load_en=1` and drive the
-   16-bit pattern on `load_data`, one bit per clock, for 16 clocks (snake
+   25-bit pattern on `load_data`, one bit per clock, for 25 clocks (snake
    order; the last bit lands in cell 0). Release `load_en`.
 5. **Step.** Pulse `step` 0→1. The engine computes 2^speed generations,
    updating the display at each vertical blank. A 3-in-a-row "blinker" flips

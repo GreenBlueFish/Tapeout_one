@@ -30,8 +30,8 @@
  *
  * Writing the grid (serial load):
  *   Hold load_en high and present bits on load_data. Each clock the bit is
- *   shifted one position along the 16-cell snake chain (row 0 left->right,
- *   row 1 right->left, ...). After 16 clocks the whole 4x4 grid is loaded;
+ *   shifted one position along the 25-cell snake chain (row 0 left->right,
+ *   row 1 right->left, ...). After 25 clocks the whole 5x5 grid is loaded;
  *   the last bit shifted in lands in cell 0.
  *
  * Advancing the simulation:
@@ -54,9 +54,6 @@ module tt_um_vga_interface (
     input  wire       clk,      // 25.175 MHz pixel clock
     input  wire       rst_n     // active-low reset
 );
-
-    localparam N = 4;   // 4x4 grid
-    localparam W = 2;   // bits for row/col (log2 N)
 
     // Active-high synchronous reset for the VGA timing block.
     wire reset = ~rst_n;
@@ -89,7 +86,7 @@ module tt_um_vga_interface (
 
     // Visible frame size and derived cell size. These MUST match the timing
     // in vga_timing.v (full 640x480, or the shrunk SIM_FAST_FRAME values used
-    // only in simulation). Each of the 4x4 cells is CELL_W x CELL_H pixels.
+    // only in simulation). Each of the 5x5 cells is CELL_W x CELL_H pixels.
 `ifdef SIM_FAST_FRAME
     localparam HDISP = 40;
     localparam VDISP = 20;
@@ -99,21 +96,22 @@ module tt_um_vga_interface (
     localparam VDISP = 480;
     localparam SEPW  = 4;
 `endif
-    localparam CELL_W = HDISP / N;   // 160 real / 10 fast
-    localparam CELL_H = VDISP / N;   // 120 real / 5  fast
+    localparam CELL_W = HDISP / 5;   // 128 real / 8 fast
+    localparam CELL_H = VDISP / 5;   // 96  real / 4 fast
 
     // Which cell the beam is inside: col = hpos / CELL_W, row = vpos / CELL_H.
     // Divisor is a constant, so this synthesises to fixed logic.
-    wire [W-1:0] col = hpos / CELL_W;
-    wire [W-1:0] row = vpos / CELL_H;
+    // 3 bits: 0..4 in the visible area, up to 6 during blanking.
+    wire [2:0] col = hpos / CELL_W;
+    wire [2:0] row = vpos / CELL_H;
 
     // ---- Game-of-Life core ----
     wire               cell_bit;
     wire               gen_tick;
     wire               busy;
-    wire [N*N-1:0]     cells;
+    wire [24:0]        cells;
 
-    golchip_core #(.N(N), .W(W)) u_core (
+    golchip_core u_core (
         .clk          (clk),
         .rst_n        (rst_n),
         .run          (run),
@@ -169,7 +167,7 @@ module tt_um_vga_interface (
     assign uio_oe  = 8'b0;
 
     // Tie off unused signals to silence lint warnings.
-    wire _unused = &{ena, uio_in, ui_in[3:2], gen_tick, busy, cells[N*N-1:1], 1'b0};
+    wire _unused = &{ena, uio_in, ui_in[3:2], gen_tick, busy, cells[24:1], 1'b0};
 
 endmodule
 

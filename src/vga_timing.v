@@ -36,7 +36,7 @@ module vga_timing (
     // GUI usable without waiting ~1 second per frame. SIM_FAST_FRAME is never
     // defined for synthesis, so the taped-out design is unaffected.
     //
-    // The visible area stays 4x4-divisible (so the grid still maps cleanly):
+    // The visible area stays 5x5-divisible (so the grid still maps cleanly):
     // fast mode uses a 40x20 visible region with tiny porches.
 `ifdef SIM_FAST_FRAME
     // Horizontal timing (pixels) - shrunk for simulation.

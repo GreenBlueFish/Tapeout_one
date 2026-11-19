@@ -4,7 +4,7 @@
 //
 //    1. golchip_core       wires everything together (hand-off to the VGA side)
 //    2. golchip_sequencer  decides WHEN things happen (12-cycle routine)
-//    3. golchip_grid       N x N cells, side-neighbour wiring, load chain
+//    3. golchip_grid       5 x 5 cells, side-neighbour wiring, load chain
 //    4. golchip_cell       one cell: shift register + Game of Life rule
 //    5. golchip_readmux     picks the cell the monitor is drawing
 //
@@ -18,10 +18,7 @@
 //   VGA -> core : vblank_start, row, col
 //   core -> VGA : cell_bit   (register it together with hsync/vsync)
 // ===========================================================================
-module golchip_core #(
-    parameter N = 4,
-    parameter W = 2                     // bits for row/col, >= log2(N)
-) (
+module golchip_core (
     input  wire           clk,
     input  wire           rst_n,
 
@@ -35,8 +32,8 @@ module golchip_core #(
 
     // from the VGA side
     input  wire           vblank_start,
-    input  wire [W-1:0]   row,
-    input  wire [W-1:0]   col,
+    input  wire [2:0]     row,          // 0..4 inside the grid
+    input  wire [2:0]     col,          // 0..4 inside the grid
 
     // to the VGA side / debug pins
     output wire           cell_bit,
@@ -44,7 +41,7 @@ module golchip_core #(
     output wire           busy,
 
     // whole grid, for tests and debugging
-    output wire [N*N-1:0] cells
+    output wire [24:0]    cells
 );
 
     wire [2:0] ld;
@@ -66,7 +63,7 @@ module golchip_core #(
         .busy         (busy)
     );
 
-    golchip_grid #(.N(N)) u_grid (
+    golchip_grid u_grid (
         .clk       (clk),
         .rst_n     (rst_n),
         .clear     (clear),
@@ -79,7 +76,7 @@ module golchip_core #(
         .chain_out (chain_out)
     );
 
-    golchip_readmux #(.N(N), .W(W)) u_mux (
+    golchip_readmux u_mux (
         .cells    (cells),
         .row      (row),
         .col      (col),
@@ -194,9 +191,9 @@ endmodule
 
 
 // ===========================================================================
-// 3. golchip_grid : N x N array of cells
+// 3. golchip_grid : 5 x 5 array of cells
 //
-//   cells[r*N + c] is the state of the cell at row r, column c.
+//   cells[r*5 + c] is the state of the cell at row r, column c.
 //   Row 0 is the top of the screen, column 0 the left.
 //
 //   Relay exchange (no diagonal wires, no tri-states):
@@ -217,9 +214,7 @@ endmodule
 //   chain[p] is the input of the cell at chain position p.
 //   The first bit shifted in ends up in the last cell of the chain.
 // ===========================================================================
-module golchip_grid #(
-    parameter N = 4
-) (
+module golchip_grid (
     input  wire           clk,
     input  wire           rst_n,
     input  wire           clear,
@@ -228,37 +223,36 @@ module golchip_grid #(
     input  wire           commit,
     input  wire           load_en,
     input  wire           load_data,
-    output wire [N*N-1:0] cells,
+    output wire [24:0]    cells,
     output wire           chain_out   // last cell of the chain (handy for tests)
 );
 
-    localparam P = N + 2;            // padded width
-
-    wire [N*N-1:0] links;            // each cell's one output wire
-    wire [P*P-1:0] pad;              // links with a dead ring around them
-    wire [N*N:0]   chain;
+    // 5x5 cells, padded to 7x7 with the dead ring.
+    wire [24:0] links;               // each cell's one output wire
+    wire [48:0] pad;                 // links with a dead ring around them
+    wire [25:0] chain;
 
     assign chain[0]  = load_data;
-    assign chain_out = chain[N*N];
+    assign chain_out = chain[25];
 
     genvar r, c;
     generate
         // ---- padded copy of the link wires -------------------------------
-        for (r = 0; r < P; r = r + 1) begin : g_pr
-            for (c = 0; c < P; c = c + 1) begin : g_pc
-                if (r == 0 || c == 0 || r == P-1 || c == P-1) begin : g_border
-                    assign pad[r*P + c] = 1'b0;
+        for (r = 0; r < 7; r = r + 1) begin : g_pr
+            for (c = 0; c < 7; c = c + 1) begin : g_pc
+                if (r == 0 || c == 0 || r == 6 || c == 6) begin : g_border
+                    assign pad[r*7 + c] = 1'b0;
                 end else begin : g_inner
-                    assign pad[r*P + c] = links[(r-1)*N + (c-1)];
+                    assign pad[r*7 + c] = links[(r-1)*5 + (c-1)];
                 end
             end
         end
 
         // ---- the cells ---------------------------------------------------
-        for (r = 0; r < N; r = r + 1) begin : g_row
-            for (c = 0; c < N; c = c + 1) begin : g_col
-                localparam integer IDX = r*N + c;
-                localparam integer POS = r*N + ((r % 2 == 0) ? c : (N-1-c));
+        for (r = 0; r < 5; r = r + 1) begin : g_row
+            for (c = 0; c < 5; c = c + 1) begin : g_col
+                localparam integer IDX = r*5 + c;
+                localparam integer POS = r*5 + ((r % 2 == 0) ? c : (4-c));
                 localparam integer PR  = r + 1;   // position in the padded grid
                 localparam integer PC  = c + 1;
 
@@ -271,10 +265,10 @@ module golchip_grid #(
                     .commit   (commit),
                     .load_en  (load_en),
                     .chain_in (chain[POS]),
-                    .in_n     (pad[(PR-1)*P + PC    ]),   // from the cell above
-                    .in_s     (pad[(PR+1)*P + PC    ]),   // from the cell below
-                    .in_e     (pad[ PR   *P + PC + 1]),   // from the cell to the right
-                    .in_w     (pad[ PR   *P + PC - 1]),   // from the cell to the left
+                    .in_n     (pad[(PR-1)*7 + PC    ]),   // from the cell above
+                    .in_s     (pad[(PR+1)*7 + PC    ]),   // from the cell below
+                    .in_e     (pad[ PR   *7 + PC + 1]),   // from the cell to the right
+                    .in_w     (pad[ PR   *7 + PC - 1]),   // from the cell to the left
                     .link     (links[IDX]),
                     .s        (cells[IDX])
                 );
@@ -389,19 +383,21 @@ endmodule
 // 5. golchip_readmux : pick the one cell the monitor is drawing
 //
 //   row / col come from the VGA counters (already offset and sliced).
+//   During blanking they can go past 4 (up to 6), so anything outside the
+//   5x5 grid reads as dead instead of indexing off the end of `cells`.
 //   Purely combinational; register the result before it drives the pins.
 // ===========================================================================
-module golchip_readmux #(
-    parameter N = 4,
-    parameter W = 2                  // bits for row/col; must be >= log2(N)
-) (
-    input  wire [N*N-1:0] cells,
-    input  wire [W-1:0]   row,
-    input  wire [W-1:0]   col,
-    output wire           cell_bit
+module golchip_readmux (
+    input  wire [24:0] cells,
+    input  wire [2:0]  row,
+    input  wire [2:0]  col,
+    output wire        cell_bit
 );
 
-    assign cell_bit = cells[row*N + col];
+    wire in_grid = (row < 3'd5) && (col < 3'd5);
+    wire [5:0] idx = row*3'd5 + col;   // up to 6*5+6 = 36 fits in 6 bits
+
+    assign cell_bit = in_grid & cells[idx];
 
 endmodule
 
