@@ -16,11 +16,11 @@ the [UW-ASIC/Dino](https://github.com/UW-ASIC/Dino) reference project.
 
 | Document | Covers |
 |---|---|
-| [docs/architecture.md](docs/architecture.md) | Block diagram, relay neighbour exchange, adder-free counting, 12-cycle sequencing, VGA path, known issues |
-| [docs/functionality.md](docs/functionality.md) | What the chip does, pins, loading and stepping, external hardware, verification results |
-| [docs/code_walkthrough.md](docs/code_walkthrough.md) | The Verilog explained file by file and module by module |
+| [docs/architecture.md](docs/architecture.md) | Block diagram, relay exchange, compaction counter, sequencer, load chain, VGA path, open items |
+| [docs/functionality.md](docs/functionality.md) | Pinout, load/step procedure, display, board setup, verification results |
+| [docs/code_walkthrough.md](docs/code_walkthrough.md) | RTL by module: hierarchy, excerpts, implementation notes |
 | [docs/info.md](docs/info.md) | Tiny Tapeout datasheet page |
-| [docs/word/](docs/word/) | Word versions: System Overview, Technical Reference, Code Walkthrough |
+| [docs/word/](docs/word/) | Word versions of the three documents above |
 
 ---
 

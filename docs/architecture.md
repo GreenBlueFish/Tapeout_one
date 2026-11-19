@@ -1,205 +1,136 @@
 # Architecture
 
-Conway's Game of Life on a 4×4 array of hardware cells that all compute the
-next generation at the same time, drawn live on a 640×480 @ 60 Hz VGA monitor.
-Target: Tiny Tapeout 26c, GF180MCU (`gf180mcuD`), one 1×1 tile.
+4×4 Game of Life (B3/S23) core with 640×480 @ 60 Hz VGA output.
+Tiny Tapeout 26c, `gf180mcuD`, 1×1 tile, top module `tt_um_vga_interface`,
+single 25.175 MHz clock, synchronous active-low reset.
 
-See also: [functionality.md](functionality.md) (what it does and how to use it)
-and [code_walkthrough.md](code_walkthrough.md) (the Verilog, module by module).
+Related: [functionality.md](functionality.md), [code_walkthrough.md](code_walkthrough.md).
 
----
-
-## 1. System overview
+## 1. Block diagram
 
 ![System block diagram](images/fig1_block.png)
 
-The design has two halves that meet at the read mux:
-
-- **Game of Life core** (`golchip_core`, `src/golchip.v`) holds the 16 cells and
-  computes generations.
-- **VGA side** (`vga_timing.v` and the renderer in `project.v`) scans the
-  screen, works out which cell is under the beam and colours the pixel.
-
-They share one timing signal: the core only updates the grid on
-`vblank_start`, when the monitor is not drawing, so the picture never tears.
-
-| Module (file) | Responsibility | Main signals |
+| Module | File | Function |
 |---|---|---|
-| `tt_um_vga_interface` (`project.v`) | Top level. Decodes the control pins, maps the beam position to a cell, colours the pixel, registers all eight video outputs. | `ui_in`, `uo_out`; `row`, `col`; `r`, `g`, `b` |
-| `vga_timing` (`vga_timing.v`) | Pixel and line counters, sync pulses, active-video flag, one-cycle pulse at the start of vertical blanking. | `hpos`, `vpos`, `hsync`, `vsync`, `display_on`, `vblank_start` |
-| `golchip_sequencer` (`golchip.v`) | Synchronises `step`, counts the burst of generations, runs the 12-cycle routine starting only at `vblank_start`. | `step`, `speed`, `load_en` → `ld[2:0]`, `shift_en`, `commit` |
-| `golchip_grid`, `golchip_cell` (`golchip.v`) | The 16 cells, their side-neighbour wiring with a dead border, and the snake load chain. | `ld`, `shift_en`, `commit`, `load_data` → `cells[15:0]` |
-| `golchip_readmux` (`golchip.v`) | Picks the one cell under the beam. | `cells`, `row`, `col` → `cell_bit` |
+| `tt_um_vga_interface` | `project.v` | Pin decode, beam → cell mapping, renderer, registered `uo_out` |
+| `vga_timing` | `vga_timing.v` | `hpos`/`vpos` counters, `hsync`/`vsync`, `display_on`, `vblank_start` |
+| `golchip_core` | `golchip.v` | Instantiates sequencer, grid, read mux |
+| `golchip_sequencer` | `golchip.v` | Step synchroniser, burst counter, 12-phase FSM |
+| `golchip_grid` | `golchip.v` | 4×4 `golchip_cell` array, padded neighbour bus, snake load chain |
+| `golchip_cell` | `golchip.v` | `s`, 8-bit compaction register `sr`, relay `link` output, next-state logic |
+| `golchip_readmux` | `golchip.v` | `cells[row*4+col]` |
 
----
+## 2. Neighbour exchange (relay, 3 steps)
 
-## 2. Cell grid
+Each cell has a single output `link`, fanned out to its N/S/E/W neighbours.
+No diagonal nets and no tri-states. Diagonals are relayed by the W and E
+neighbours.
 
-### 2.1 Neighbour exchange by relay (3 steps)
+![Relay steps](images/fig2_relay.png)
 
-Every cell has **one output wire**, `link`, that goes to its four side
-neighbours (N, S, E, W). There are **no diagonal wires**. Diagonal values are
-passed along by a side neighbour: a cell's north-west neighbour is the north
-neighbour of its west neighbour, so the west neighbour can forward it.
-
-![The three relay steps](images/fig2_relay.png)
-
-| Step | Every cell drives `link` with | Cell stores | Meaning |
+| Phase | Strobe | `link` drives | Loaded |
 |---|---|---|---|
-| 1 (`ld[0]`) | its own state `s` | `sr[0..3] <= in_n, in_s, in_e, in_w` | the four side neighbours |
-| 2 (`ld[1]`) | `sr[0]`, the N it heard in step 1 | `sr[4] <= in_w`, `sr[5] <= in_e` | W's north is my NW; E's north is my NE |
-| 3 (`ld[2]`) | `sr[1]`, the S it heard in step 1 | `sr[6] <= in_w`, `sr[7] <= in_e` | W's south is my SW; E's south is my SE |
+| 1 | `ld[0]` | `s` | `sr[3:0] <= {in_w, in_e, in_s, in_n}` |
+| 2 | `ld[1]` | `sr[0]` (own N) | `sr[4] <= in_w` (NW), `sr[5] <= in_e` (NE) |
+| 3 | `ld[2]` | `sr[1]` (own S) | `sr[6] <= in_w` (SW), `sr[7] <= in_e` (SE) |
 
-Every wire keeps exactly one driver; only what it carries changes. Which
-neighbour lands in which register stage does not matter, because only the
-number of 1s is used.
+`in_n`/`in_s` are ignored in phases 2–3. Bit assignment within `sr` is
+arbitrary since only the population count is used.
 
-**Why relay.** The original design wired each cell directly to all eight
-neighbours. A shared-line scheme (two cells taking turns on one wire) would
-halve the lines but needs tri-state drivers or two drivers on one net, which
-we understand is not available inside a Tiny Tapeout project.
-
-| (4×4 grid) | Direct links | Shared lines | **Relay (built)** |
+| 4×4 grid | Direct 8-neighbour | Shared lines | Relay (built) |
 |---|---|---|---|
-| Inputs per cell | 8 | 4 (shared) | **4** |
-| Driver-to-receiver links | 84 | fewer, shared | **48** |
-| Diagonal wires | yes | yes | **no** |
-| Tri-states needed | no | yes | **no** |
-| Exchange steps | 4 | 4 | **3** |
-| Extra logic per cell | none | tri-state enables | **3:1 mux on `link`** |
+| Inputs per cell | 8 | 4 | 4 |
+| Driver→receiver connections | 84 | — | 48 |
+| Diagonal routing | yes | yes | no |
+| Multi-driver nets | no | yes | no |
+| Exchange cycles | 4 | 4 | 3 |
+| Per-cell overhead | — | tri-state enables | 3:1 mux on `link` |
 
-### 2.2 Counting without adders
+## 3. Population count and next state
 
-The eight neighbour bits sit in an 8-bit shift register `sr`. While `shift_en`
-is high, every 1 moves one stage right whenever the stage on its right is
-empty. After at most 7 cycles (8 are budgeted) the register is a thermometer
-code: *k* live neighbours means the right-most *k* bits are 1.
+`sr` is compacted right for 8 cycles (`shift_en`); worst case is 7. Result is
+a thermometer code of the neighbour count.
 
 ```verilog
-e            = {1'b1, sr, 1'b0};        // walls around sr
-sr_packed[i] = (e[i+1] & e[i+2])         // a blocked 1 stays
-             | (e[i]   & ~e[i+1]);       // an empty stage takes the 1 from its left
-```
+e            = {1'b1, sr, 1'b0};
+sr_packed[i] = (e[i+1] & e[i+2]) | (e[i] & ~e[i+1]);
 
-The count is then read straight off two bits:
-
-| Condition | Test on the packed register |
-|---|---|
-| count ≥ 2 | `sr[6]` |
-| count ≥ 3 | `sr[5]` |
-| count ≥ 4 | `sr[4]` |
-
-```verilog
 exactly3 = sr[5] & ~sr[4];
 exactly2 = sr[6] & ~sr[5];
-next_s   = exactly3 | (s & exactly2);   // B3/S23 in three gates
+next_s   = exactly3 | (s & exactly2);
 ```
 
-Each cell has nine flip-flops (`s` plus the eight `sr` stages), 144 in the
+`sr[6]`, `sr[5]`, `sr[4]` = count ≥ 2, ≥ 3, ≥ 4. 9 flops per cell, 144 in the
 grid.
 
-### 2.3 Phase sequencing (12 cycles)
+## 4. Sequencing
 
-![Sequencer timing for one generation](images/fig4_timing.png)
+![Sequencer timing](images/fig4_timing.png)
 
-| Phase | Signal | What happens |
+| Phase | Output | Cycles |
 |---|---|---|
-| 0 | — | idle; waits for `vblank_start` |
-| 1–3 | `ld[0]`, `ld[1]`, `ld[2]` | relay exchange |
-| 4–11 | `shift_en` | compaction (8 cycles) |
-| 12 | `commit` | every `s <= next_s` at once |
+| 0 | idle; leaves on `start` | — |
+| 1–3 | `ld[0..2]` | 3 |
+| 4–11 | `shift_en` | 8 |
+| 12 | `commit` | 1 |
 
-All strobes are clock enables on the single system clock; there are no
-derived or gated clocks.
+`start = vblank_start & (phase==0) & ~load_en & (gens_left!=0)`.
+Generation = 12 cycles; vertical blanking = 36,000 cycles, so every commit
+lands in blanking. All strobes are clock enables; single clock domain.
 
-### 2.4 Dead border
+`step` → 2-FF synchroniser → rising-edge detect. On `step_rise & ~load_en`,
+`gens_left <= 2**speed` (reload, not accumulate); decremented on `commit`.
+One generation per frame. `busy = (phase!=0) | (gens_left!=0)`.
 
-The grid builds a padded 6×6 copy of the `link` wires with a ring of constant
-0s, and every cell reads its neighbours from it. Edge cells hear 0 from outside
-the grid, and relayed diagonals from the border are 0 too. Patterns reaching
-the edge die or settle; an all-alive grid leaves only the four corners.
+## 5. Boundary
 
----
+`golchip_grid` builds a 6×6 `pad` bus from `links` with a constant-0 ring.
+All cell inputs index into `pad`, giving a dead border; relayed diagonals from
+the ring are also 0. All-ones grid → corners only (`0x9009`) after one
+generation.
 
-## 3. VGA path
-
-### 3.1 Timing (640×480 @ 60 Hz, 25.175 MHz)
-
-| Segment | Horizontal (pixels) | Vertical (lines) |
-|---|---|---|
-| Active video | 640 (0–639) | 480 (0–479) |
-| Front porch | 16 | 10 |
-| Sync pulse (active low) | 96 (656–751) | 2 (490–491) |
-| Back porch | 48 | 33 |
-| Total | 800 | 525 |
-
-Vertical blanking is 45 lines × 800 clocks = 36,000 clocks; a generation needs
-12, so every commit lands in blanking.
-
-### 3.2 Pixels to cells
-
-![Frame layout](images/fig5_frame.png)
-
-The grid fills the whole screen: each cell is 160×120 pixels, so
-`col = hpos / 160` and `row = vpos / 120` (constant divisors, built as fixed
-logic). A 4-pixel separator is drawn where `hpos % 160` or `vpos % 120` is
-below 4.
-
-| Pixel | RR GG BB | Appearance |
-|---|---|---|
-| outside the active area | 00 00 00 | black |
-| separator | 01 01 01 | dim grey |
-| live cell | 11 11 11 | white |
-| dead cell | 00 00 01 | very dark blue |
-
-All eight `uo_out` bits, including `hsync` and `vsync`, are registered
-together, so colour and sync leave the chip on the same clock edge (one clock
-of latency, not visible).
-
-### 3.3 Read mux
-
-`cell_bit = cells[row*4 + col]`: a combinational 16:1 mux feeding the
-renderer and then the output register.
-
----
-
-## 4. Loading and control
+## 6. Load chain
 
 ![Snake load chain](images/fig6_snake.png)
 
-- **Load chain.** While `load_en` is high, one bit per clock enters from
-  `load_data` and shifts through every cell's `s` in snake order (row 0 left to
-  right, row 1 right to left, …). 16 clocks load the grid. The sequencer cannot
-  start and `step` is ignored while loading.
-- **Step.** `step` passes through a 2-flip-flop synchroniser and an edge
-  detector. Each rising edge loads a burst counter with 2^`speed` (1, 2, 4, 8);
-  one generation runs per frame until it reaches 0. A new edge during a burst
-  reloads the counter.
-- **Reset.** `rst_n` synchronously clears every cell, register stage and the
-  sequencer. `run` is reserved; `busy` and `gen_tick` exist in the core but are
-  not on pins.
+`POS = r*4 + (r even ? c : 3-c)`, `chain[0] = load_data`,
+`chain[POS+1] = cells[IDX]`. While `load_en`, `s <= chain_in` (takes priority
+over `commit`). 16 clocks per load; the first bit sent lands at POS 15
+(cell 12). The sequencer cannot start and `step` edges are dropped during
+load.
 
----
+## 7. VGA path
 
-## 5. Changes from the original (v3) design document
-
-| Area | v3 plan | As built |
+| | H (px) | V (lines) |
 |---|---|---|
-| Process | SkyWater 130 nm | GF180MCU, TT 26c, 1×1 tile |
-| Exchange | 8 direct links, 4 steps | relay over 4 side wires, 3 steps |
-| Generation | 14 cycles | 12 cycles |
-| Run control | run/pause, step, speed as frame divider | step bursts of 2^speed; `run` reserved |
-| Clear | dedicated pin | removed; `rst_n` clears |
-| Display | centred power-of-two block | full screen, 160×120 cells, separators |
-| `uio` | debug outputs | unused |
+| Active | 0–639 | 0–479 |
+| Front porch | 16 | 10 |
+| Sync (low) | 656–751 | 490–491 |
+| Back porch | 48 | 33 |
+| Total | 800 | 525 |
 
-## 6. Known issues and remaining checks
+`vblank_start = (vpos==480) & (hpos==0)`.
 
-- **Area on GF180.** Cells are larger than on SKY130; check utilisation in the
-  hardening report. The divide/modulo by 160 and 120 could be replaced by three
-  comparisons per axis if area is tight.
-- **Clock.** Confirm the demo board provides 25.175 MHz (many monitors also
-  accept 25.0 MHz).
-- **Gate level.** Gate-level simulation and timing/area reports from the
-  GitHub Actions flow still need review.
-- **Dead border.** Gliders die at the edge; wrap-around is future work.
+![Frame layout](images/fig5_frame.png)
+
+- `col = hpos/160`, `row = vpos/120` (constant divisors, 2-bit results;
+  wrap outside the active area is masked by `display_on`).
+- Separators: `hpos%160 < 4` or `vpos%120 < 4`.
+- Colour priority: `~display_on` → 000000; separator → 010101;
+  live → 111111; dead → 000001 (RRGGBB).
+- All of `uo_out` (including syncs) registered together: 1-cycle latency,
+  sync/colour aligned.
+
+## 8. Resources and unused I/O
+
+- `uio_out = uio_oe = 0`; `ui_in[3:2]` unused; `run` (`ui_in[6]`) decoded,
+  unused.
+- `gen_tick`, `busy`, `cells` exist on `golchip_core` but are not pinned out.
+- `clear` tied low; `rst_n` clears all state.
+
+## 9. Open items
+
+- Utilisation on GF180 not yet reviewed. Fallback: replace `/160`, `/120`,
+  `%160`, `%120` with comparators or per-line counters.
+- Confirm 25.175 MHz on the demo board.
+- Review gate-level sim and STA from the GDS action.
