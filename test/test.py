@@ -19,7 +19,7 @@ import os
 # the same (much smaller) numbers and runs in seconds instead of minutes.
 if os.environ.get("GUI_FAST_FRAME", "0") == "1":
     H_DISPLAY, H_FRONT, H_SYNC, H_BACK = 40, 2, 4, 2
-    V_DISPLAY, V_FRONT, V_SYNC, V_BACK = 20, 1, 2, 1
+    V_DISPLAY, V_FRONT, V_SYNC, V_BACK = 24, 1, 2, 1
 else:
     H_DISPLAY, H_FRONT, H_SYNC, H_BACK = 640, 16, 96, 48
     V_DISPLAY, V_FRONT, V_SYNC, V_BACK = 480, 10, 2, 33
@@ -66,10 +66,10 @@ async def reset_dut(dut):
     await RisingEdge(dut.clk)
 
 
-# --- Bounded 5x5 Conway reference (dead borders), row-major bit = r*5+c ---
+# --- Bounded Conway reference, 6 rows x 5 cols (dead borders), bit = r*5+c ---
 def conway_next(grid):
     out = 0
-    for r in range(5):
+    for r in range(6):
         for c in range(5):
             n = 0
             for dr in (-1, 0, 1):
@@ -77,7 +77,7 @@ def conway_next(grid):
                     if dr == 0 and dc == 0:
                         continue
                     rr, cc = r + dr, c + dc
-                    if 0 <= rr < 5 and 0 <= cc < 5:
+                    if 0 <= rr < 6 and 0 <= cc < 5:
                         n += (grid >> (rr * 5 + cc)) & 1
             alive = (grid >> (r * 5 + c)) & 1
             nxt = 1 if (n == 3 or (alive and n == 2)) else 0
@@ -86,11 +86,11 @@ def conway_next(grid):
 
 
 async def serial_load(dut, target):
-    """Load `target` (25-bit, bit i -> cell i) via the serial snake chain.
+    """Load `target` (30-bit, bit i -> cell i) via the serial snake chain.
 
     The chain shifts one cell per clock while load_en is high. We discover
-    the stream order once by probing, but here we simply shift 25 bits and
-    rely on the fact (verified in RTL) that after 25 clocks `cells` holds
+    the stream order once by probing, but here we simply shift 30 bits and
+    rely on the fact (verified in RTL) that after 30 clocks `cells` holds
     whatever stream we fed. To hit an exact target we brute-force the stream
     by shifting the bits in the snake order the hardware expects.
     """
@@ -98,11 +98,11 @@ async def serial_load(dut, target):
     # time-slot given by the inverse of the chain. Empirically (see repo
     # history) the stream order that yields cells==pattern is:
     #   slot t -> cell = SNAKE[t]
-    SNAKE = [24, 23, 22, 21, 20, 15, 16, 17, 18, 19, 14, 13, 12, 11, 10,
-             5, 6, 7, 8, 9, 4, 3, 2, 1, 0]
+    SNAKE = [25, 26, 27, 28, 29, 24, 23, 22, 21, 20, 15, 16, 17, 18, 19,
+             14, 13, 12, 11, 10, 5, 6, 7, 8, 9, 4, 3, 2, 1, 0]
     await FallingEdge(dut.clk)
     dut.ui_in.value = ui(load_en=1)
-    for t in range(25):
+    for t in range(30):
         bit = (target >> SNAKE[t]) & 1
         dut.ui_in.value = ui(load_en=1, load_data=bit)
         await RisingEdge(dut.clk)
@@ -228,7 +228,7 @@ async def test_serial_load(dut):
     await reset_dut(dut)
     pat = 0x0003800  # blinker, cells 11,12,13
     await serial_load(dut, pat)
-    assert cells(dut) == pat, f"loaded {cells(dut):#09x} != {pat:#09x}"
+    assert cells(dut) == pat, f"loaded {cells(dut):#010x} != {pat:#010x}"
 
 
 @cocotb.test(skip=GL)
@@ -267,12 +267,12 @@ async def test_step_one_generation(dut):
     exp1 = conway_next(pat)          # should be vertical
     await do_step(dut, speed=0)
     assert cells(dut) == exp1, \
-        f"after 1 gen {cells(dut):#09x} != {exp1:#09x}"
+        f"after 1 gen {cells(dut):#010x} != {exp1:#010x}"
 
     exp2 = conway_next(exp1)         # back to horizontal
     await do_step(dut, speed=0)
     assert cells(dut) == exp2, \
-        f"after 2 gens {cells(dut):#09x} != {exp2:#09x}"
+        f"after 2 gens {cells(dut):#010x} != {exp2:#010x}"
 
 
 @cocotb.test(skip=GL)
@@ -287,13 +287,13 @@ async def test_speed_multiple_generations(dut):
     exp = conway_next(conway_next(pat))
     await do_step(dut, speed=1)
     assert cells(dut) == exp, \
-        f"speed1 (2 gens) {cells(dut):#09x} != {exp:#09x}"
+        f"speed1 (2 gens) {cells(dut):#010x} != {exp:#010x}"
 
     # speed=2 -> 4 more generations.
     exp2 = pat_after(cells(dut), 4)
     await do_step(dut, speed=2)
     assert cells(dut) == exp2, \
-        f"speed2 (4 gens) {cells(dut):#09x} != {exp2:#09x}"
+        f"speed2 (4 gens) {cells(dut):#010x} != {exp2:#010x}"
 
 
 def pat_after(grid, n):
@@ -345,9 +345,10 @@ FAST = os.environ.get("GUI_FAST_FRAME", "0") == "1"
 FRAME = V_TOTAL * H_TOTAL
 
 # Cell geometry. MUST match src/project.v (CELL_W/CELL_H/SEPW).
-N_GRID = 5
-CELL_W = H_DISPLAY // N_GRID
-CELL_H = V_DISPLAY // N_GRID
+N_ROWS = 6
+N_COLS = 5
+CELL_W = H_DISPLAY // N_COLS
+CELL_H = V_DISPLAY // N_ROWS
 SEPW = 1 if FAST else 4
 
 # Colour bits on uo_out (everything except the two sync bits).
@@ -358,8 +359,8 @@ COLOUR_DEAD = 0x40   # b=01     (near-black blue, only B0 set)
 COLOUR_SEP  = 0x70   # r=g=b=01 (dim grey separator)
 
 # Same order as serial_load's SNAKE (stream slot t -> cell index).
-SNAKE_ORDER = [24, 23, 22, 21, 20, 15, 16, 17, 18, 19, 14, 13, 12, 11, 10,
-               5, 6, 7, 8, 9, 4, 3, 2, 1, 0]
+SNAKE_ORDER = [25, 26, 27, 28, 29, 24, 23, 22, 21, 20, 15, 16, 17, 18, 19,
+               14, 13, 12, 11, 10, 5, 6, 7, 8, 9, 4, 3, 2, 1, 0]
 
 
 def colour(dut):
@@ -435,7 +436,7 @@ async def wait_frame_origin(dut):
 
 
 async def cells_from_pixels(dut):
-    """Reconstruct the 25-bit grid from the VGA output pins alone.
+    """Reconstruct the 30-bit grid from the VGA output pins alone.
 
     Samples the centre pixel of every cell during one frame. Centre pixels
     are far from separators, so a clock or two of sampling skew is harmless.
@@ -444,8 +445,8 @@ async def cells_from_pixels(dut):
     await wait_frame_origin(dut)
     t = 0
     grid = 0
-    for r in range(N_GRID):
-        for c in range(N_GRID):
+    for r in range(N_ROWS):
+        for c in range(N_COLS):
             h = c * CELL_W + (CELL_W + SEPW) // 2
             v = r * CELL_H + (CELL_H + SEPW) // 2
             target = v * H_TOTAL + h
@@ -453,7 +454,7 @@ async def cells_from_pixels(dut):
             t = target
             col = colour(dut)
             if col == COLOUR_LIVE:
-                grid |= 1 << (r * N_GRID + c)
+                grid |= 1 << (r * N_COLS + c)
             else:
                 assert col == COLOUR_DEAD, \
                     f"cell ({r},{c}) centre colour {col:#04x} is neither " \
@@ -467,25 +468,25 @@ async def cells_from_pixels(dut):
 
 @cocotb.test(skip=GL)
 async def test_random_patterns(dut):
-    """Random 5x5 grids, stepped at speed 0 and 1, match conway_next."""
+    """Random 6x5 grids, stepped at speed 0 and 1, match conway_next."""
     start_clock(dut)
     await reset_dut(dut)
     rng = random.Random(int(os.environ.get("GOL_SEED", "298")))
     n_patterns = 30 if FAST else 3
     for i in range(n_patterns):
-        pat = rng.getrandbits(25)
+        pat = rng.getrandbits(30)
         await serial_load(dut, pat)
-        assert cells(dut) == pat, f"[{i}] load {cells(dut):#09x} != {pat:#09x}"
+        assert cells(dut) == pat, f"[{i}] load {cells(dut):#010x} != {pat:#010x}"
 
         exp = conway_next(pat)
         await do_step(dut, speed=0)
         assert cells(dut) == exp, \
-            f"[{i}] pat {pat:#09x}: 1 gen -> {cells(dut):#09x}, expected {exp:#09x}"
+            f"[{i}] pat {pat:#010x}: 1 gen -> {cells(dut):#010x}, expected {exp:#010x}"
 
         exp = pat_after(exp, 2)
         await do_step(dut, speed=1)
         assert cells(dut) == exp, \
-            f"[{i}] pat {pat:#09x}: +2 gens -> {cells(dut):#09x}, expected {exp:#09x}"
+            f"[{i}] pat {pat:#010x}: +2 gens -> {cells(dut):#010x}, expected {exp:#010x}"
 
 
 # ---------------------------------------------------------------------------
@@ -501,22 +502,22 @@ async def test_dead_border_cases(dut):
     # Hard-coded expectations so a bug in conway_next can't hide a bug in RTL.
     # All ones: every interior/edge cell is overcrowded; corners have exactly
     # 3 neighbours and survive.
-    await serial_load(dut, 0x1ffffff)
+    await serial_load(dut, 0x3fffffff)
     await do_step(dut, speed=0)
-    assert cells(dut) == 0x1100011, \
-        f"all-ones -> {cells(dut):#09x}, expected corners only 0x1100011"
+    assert cells(dut) == 0x22000011, \
+        f"all-ones -> {cells(dut):#010x}, expected corners only 0x22000011"
 
     cases = [
-        ("block top-left (still life)",       0x0000063),
-        ("block bottom-right (still life)",   0x18c0000),
-        ("block top-right (still life)",      0x0000318),
-        ("block bottom-left (still life)",    0x0318000),
-        ("vertical blinker on left edge",     0x0008420),
-        ("horizontal blinker on top edge",    0x000000e),
-        ("vertical blinker on right edge",    0x0084200),
-        ("horizontal blinker bottom edge",    0x0e00000),
-        ("single corner cell dies",           0x0000001),
-        ("L in bottom-right corner",          0x1840000),
+        ("block top-left (still life)",       0x00000063),
+        ("block bottom-right (still life)",   0x31800000),
+        ("block top-right (still life)",      0x00000318),
+        ("block bottom-left (still life)",    0x06300000),
+        ("vertical blinker on left edge",     0x00008420),
+        ("horizontal blinker on top edge",    0x0000000e),
+        ("vertical blinker on right edge",    0x01084000),
+        ("horizontal blinker bottom edge",    0x1c000000),
+        ("single corner cell dies",           0x00000001),
+        ("L in bottom-right corner",          0x30800000),
     ]
     for name, pat in cases:
         await serial_load(dut, pat)
@@ -525,7 +526,7 @@ async def test_dead_border_cases(dut):
             g = conway_next(g)
             await do_step(dut, speed=0)
             assert cells(dut) == g, \
-                f"{name}: gen {gen} {cells(dut):#09x} != {g:#09x}"
+                f"{name}: gen {gen} {cells(dut):#010x} != {g:#010x}"
         if "still life" in name:
             assert cells(dut) == pat, f"{name}: still life changed"
 
@@ -546,7 +547,7 @@ async def test_speed3_eight_generations(dut):
     mon.stop()
     assert mon.count == 8, f"speed=3 committed {mon.count} generations, expected 8"
     exp = pat_after(pat, 8)
-    assert cells(dut) == exp, f"speed3 (8 gens) {cells(dut):#09x} != {exp:#09x}"
+    assert cells(dut) == exp, f"speed3 (8 gens) {cells(dut):#010x} != {exp:#010x}"
 
 
 # ---------------------------------------------------------------------------
@@ -558,10 +559,10 @@ async def test_serial_load_each_cell(dut):
     """Every one-hot pattern, plus all-ones / all-zeros, loads exactly."""
     start_clock(dut)
     await reset_dut(dut)
-    pats = [1 << i for i in range(25)] + [0x1ffffff, 0x0000000, 0x1555555, 0x0AAAAAA]
+    pats = [1 << i for i in range(30)] + [0x3fffffff, 0x00000000, 0x15555555, 0x2AAAAAAA]
     for pat in pats:
         await serial_load(dut, pat)
-        assert cells(dut) == pat, f"loaded {cells(dut):#09x} != {pat:#09x}"
+        assert cells(dut) == pat, f"loaded {cells(dut):#010x} != {pat:#010x}"
 
 
 # ---------------------------------------------------------------------------
@@ -602,7 +603,7 @@ async def test_step_ignored_during_load(dut):
     # Serial load by hand, raising step half-way through and keeping it high.
     await FallingEdge(dut.clk)
     step = 0
-    for t in range(25):
+    for t in range(30):
         if t == 6:
             step = 1
         bit = (pat >> SNAKE_ORDER[t]) & 1
@@ -614,7 +615,7 @@ async def test_step_ignored_during_load(dut):
     await ClockCycles(dut.clk, 5)
     dut.ui_in.value = ui()
     await RisingEdge(dut.clk)
-    assert cells(dut) == pat, f"load {cells(dut):#09x} != {pat:#09x}"
+    assert cells(dut) == pat, f"load {cells(dut):#010x} != {pat:#010x}"
 
     for _ in range(3 * FRAME):
         await RisingEdge(dut.clk)
@@ -680,7 +681,7 @@ async def test_step_during_burst_reloads(dut):
 
     assert mon.count == 5, f"re-stepped burst ran {mon.count} generations, expected 5"
     exp = pat_after(pat, 5)
-    assert cells(dut) == exp, f"after 5 gens {cells(dut):#09x} != {exp:#09x}"
+    assert cells(dut) == exp, f"after 5 gens {cells(dut):#010x} != {exp:#010x}"
 
 
 # ---------------------------------------------------------------------------
@@ -704,7 +705,7 @@ async def test_reset_mid_burst(dut):
 
     await reset_dut(dut)   # also drives step low
     assert int(dut.user_project.u_core.busy.value) == 0, "busy still set after reset"
-    assert cells(dut) == 0, f"grid not cleared by reset: {cells(dut):#09x}"
+    assert cells(dut) == 0, f"grid not cleared by reset: {cells(dut):#010x}"
 
     # The cancelled burst must not resume on a freshly loaded grid.
     pat = 0x0003800
@@ -728,15 +729,15 @@ async def test_display_per_cell(dut):
     await reset_dut(dut)
     rng = random.Random(4242)
     if FAST:
-        pats = [0x0000000, 0x1ffffff, 0x1555555, 0x0AAAAAA,
-                1 << 0, 1 << 4, 1 << 20, 1 << 24]
-        pats += [rng.getrandbits(25) for _ in range(6)]
+        pats = [0x00000000, 0x3fffffff, 0x15555555, 0x2AAAAAAA,
+                1 << 0, 1 << 4, 1 << 25, 1 << 29]
+        pats += [rng.getrandbits(30) for _ in range(6)]
     else:
-        pats = [0x1555555, (1 << 0) | (1 << 24)]
+        pats = [0x15555555, (1 << 0) | (1 << 29)]
     for pat in pats:
         await serial_load(dut, pat)
         seen = await cells_from_pixels(dut)
-        assert seen == pat, f"display shows {seen:#09x}, loaded {pat:#09x}"
+        assert seen == pat, f"display shows {seen:#010x}, loaded {pat:#010x}"
 
 
 # ---------------------------------------------------------------------------
@@ -748,7 +749,7 @@ async def test_blanking_is_black(dut):
     """No colour bit may be set outside the 640x480 visible area."""
     start_clock(dut)
     await reset_dut(dut)
-    await serial_load(dut, 0x1ffffff)   # all white: worst case for leaks
+    await serial_load(dut, 0x3fffffff)   # all white: worst case for leaks
 
     timing = dut.user_project.u_timing
     prev_on = 1
@@ -833,4 +834,4 @@ async def test_ports_only_step(dut):
         dut.ui_in.value = ui(speed=speed)
         g = pat_after(g, 2 ** speed)
         seen = await cells_from_pixels(dut)
-        assert seen == g, f"speed={speed}: display {seen:#09x}, expected {g:#09x}"
+        assert seen == g, f"speed={speed}: display {seen:#010x}, expected {g:#010x}"
